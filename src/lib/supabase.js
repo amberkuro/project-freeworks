@@ -1,46 +1,22 @@
-let supabase = null;
+import { createClient } from "@supabase/supabase-js";
+
+let browserSupabase = null;
 
 export function getSupabase() {
-  if (supabase) return supabase;
+  if (browserSupabase) return browserSupabase;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url || !key) {
-    console.log("[Supabase] 환경변수 없음 - 개발 모드로 동작");
+  if (!url || !anonKey) {
+    console.error("[Supabase] 환경변수 없음");
+    console.error("NEXT_PUBLIC_SUPABASE_URL:", url ? "설정됨" : "없음");
+    console.error("NEXT_PUBLIC_SUPABASE_ANON_KEY:", anonKey ? "설정됨" : "없음");
     return null;
   }
 
-  supabase = {
-    storage: {
-      from: (bucket) => ({
-        upload: async (path, file, options = {}) => {
-          const res = await fetch(`${url}/storage/v1/object/${bucket}/${path}`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${key}`,
-              ...(options?.contentType
-                ? { "Content-Type": options.contentType }
-                : {}),
-            },
-            body: file,
-          });
-
-          if (!res.ok) {
-            const err = await res.json();
-            return { data: null, error: err };
-          }
-
-          return { data: { path }, error: null };
-        },
-        getPublicUrl: (path) => ({
-          data: { publicUrl: `${url}/storage/v1/object/public/${bucket}/${path}` },
-        }),
-      }),
-    },
-  };
-
-  return supabase;
+  browserSupabase = createClient(url, anonKey);
+  return browserSupabase;
 }
 
 export const STORAGE_BUCKET = "portfolios";

@@ -180,25 +180,38 @@ export default function ApplicationsManager({ apps, updateLocal, updateRemote, i
   const processAction = async (app, action, note) => {
     setLoading(app.id);
     try {
-      // 이메일 발송 시도 (실패해도 상태는 변경)
-      try {
-        const ep = { approved: "approve", rejected: "reject", on_hold: "hold" }[action];
-        await fetch(`/api/admin/applications/${app.id}/${ep}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            artist_name: app.artist_name,
-            email: app.email,
-            admin_note: note,
-          }),
-        });
-      } catch {}
+      const ep = { approved: "approve", rejected: "reject", on_hold: "hold" }[action];
+      const res = await fetch(`/api/admin/applications/${app.id}/${ep}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist_name: app.artist_name,
+          email: app.email,
+          admin_note: note,
+        }),
+      });
 
-      // DB 상태 변경
-      await updateRemote(app.id, { status: action });
-      alert({ approved: "승인 완료", rejected: "거절 완료", on_hold: "보류 완료" }[action]);
-    } catch {
-      alert("처리 실패");
+      // 승인 시: 초대 메일 발송 결과 확인 (실패하면 상태 변경 안 함)
+      if (action === "approved") {
+        const result = await res.json();
+        if (!res.ok) {
+          alert(`승인 실패: ${result.error || "알 수 없는 오류"}\n\n${result.detail || ""}`);
+          setLoading(null);
+          return;
+        }
+        await updateRemote(app.id, { status: action });
+        alert(
+          result.alreadyInvited
+            ? `${app.artist_name}님은 이미 초대된 상태입니다.\n상태를 승인으로 변경했습니다.`
+            : `승인 및 초대 메일 발송 완료!\n${app.email}로 초대 메일이 전송되었습니다.`
+        );
+      } else {
+        // 거절/보류: 기존 방식 (이메일 실패해도 상태 변경)
+        await updateRemote(app.id, { status: action });
+        alert({ rejected: "거절 완료", on_hold: "보류 완료" }[action]);
+      }
+    } catch (err) {
+      alert(`처리 실패: ${err.message || "네트워크 오류"}`);
     } finally {
       setLoading(null);
       setModal(null);

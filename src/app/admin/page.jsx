@@ -58,7 +58,7 @@ export default function AdminPage() {
       return <SamplesManager initialDetail={ps} />;
 
     case "members":
-      return <MembersManager apps={apps} />;
+      return <MembersManager apps={apps} fetchApps={fetchApps} />;
 
     default:
       return (

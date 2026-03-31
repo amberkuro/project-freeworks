@@ -1,6 +1,6 @@
 "use client";
-
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -8,213 +8,226 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-function parsePortfolioUrls(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-
-  try {
-    return JSON.parse(value);
-  } catch (e) {
-    return [];
-  }
-}
-
-function isImageFile(url = "", type = "") {
-  return (
-    type.startsWith("image/") ||
-    /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)
-  );
-}
-
-export default function AdminPage() {
+export default function AdminDashboard() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
-    const { data, error } = await supabase
-      .from("applications")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (!error) {
-      setApplications(data || []);
-    }
-
-    setLoading(false);
-  };
-
   useEffect(() => {
+    const fetchData = async () => {
+      const { data, error } = await supabase
+        .from("applications")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        setApplications(data || []);
+      }
+      setLoading(false);
+    };
+
     fetchData();
   }, []);
 
-  const updateStatus = async (id, status) => {
-    const { error } = await supabase
-      .from("applications")
-      .update({ status })
-      .eq("id", id);
-
-    if (!error) {
-      fetchData();
-    } else {
-      alert("상태 변경 실패");
-      console.error(error);
-    }
-  };
-
   if (loading) {
-    return <div style={{ padding: 40 }}>로딩중...</div>;
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "#999" }}>
+        로딩중...
+      </div>
+    );
   }
 
+  const total = applications.length;
+  const pending = applications.filter((a) => a.status === "pending").length;
+  const approved = applications.filter((a) => a.status === "approved").length;
+  const rejected = applications.filter((a) => a.status === "rejected").length;
+
+  const stats = [
+    { label: "전체 신청", value: total, color: "#000" },
+    { label: "검토 대기", value: pending, color: "#FFD600", accent: true },
+    { label: "승인", value: approved, color: "#2e7d32" },
+    { label: "거절", value: rejected, color: "#c62828" },
+  ];
+
+  const recent = applications.slice(0, 5);
+
+  const statusStyle = (status) => {
+    if (status === "approved") return { color: "#2e7d32", bg: "#e8f5e9" };
+    if (status === "rejected") return { color: "#c62828", bg: "#ffebee" };
+    return { color: "#888", bg: "#f0f0f0" };
+  };
+
   return (
-    <div style={{ padding: 40, maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, fontWeight: "bold", marginBottom: 24 }}>
-        관리자 페이지
+    <div style={{ padding: "32px 40px", maxWidth: 1000 }}>
+      <h1
+        style={{
+          fontSize: 24,
+          fontWeight: 800,
+          color: "#000",
+          marginBottom: 8,
+        }}
+      >
+        관리자 대시보드
       </h1>
+      <p style={{ fontSize: 13, color: "#999", marginBottom: 32 }}>
+        크리에이터 신청 현황을 한눈에 확인할 수 있습니다.
+      </p>
 
-      {applications.length === 0 ? (
-        <div>신청 내역이 없습니다.</div>
-      ) : (
-        applications.map((app) => {
-          const portfolioFiles = parsePortfolioUrls(app.portfolio_urls);
-
-          return (
+      {/* 통계 카드 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 16,
+          marginBottom: 40,
+        }}
+      >
+        {stats.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              background: "#fff",
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: "20px 24px",
+            }}
+          >
             <div
-              key={app.id}
               style={{
-                border: "1px solid #ddd",
-                padding: 24,
-                marginBottom: 24,
-                borderRadius: 12,
-                background: "#fff",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#999",
+                marginBottom: 8,
+                textTransform: "uppercase",
               }}
             >
-              <div style={{ marginBottom: 16, lineHeight: 1.8 }}>
-                <p><b>이름:</b> {app.name}</p>
-                <p><b>이메일:</b> {app.email}</p>
-                <p><b>인스타:</b> {app.instagram || "-"}</p>
-                <p><b>트위터:</b> {app.twitter || "-"}</p>
-                <p><b>상태:</b> {app.status}</p>
-                <p><b>카테고리:</b> {app.category || "-"}</p>
-                <p><b>설명:</b> {app.description || "-"}</p>
-              </div>
+              {s.label}
+            </div>
+            <div
+              style={{
+                fontSize: 32,
+                fontWeight: 900,
+                color: s.accent ? s.color : "#000",
+              }}
+            >
+              {s.value}
+            </div>
+          </div>
+        ))}
+      </div>
 
-              <div style={{ marginBottom: 20 }}>
-                <h3 style={{ fontSize: 18, marginBottom: 12 }}>포트폴리오</h3>
+      {/* 최근 신청 */}
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700 }}>최근 신청</h2>
+        <Link
+          href="/admin/applications"
+          style={{
+            fontSize: 12,
+            color: "#888",
+            textDecoration: "none",
+          }}
+        >
+          전체 보기 →
+        </Link>
+      </div>
 
-                {portfolioFiles.length === 0 ? (
-                  <p style={{ color: "#666" }}>업로드된 포트폴리오가 없습니다.</p>
-                ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-                      gap: 16,
-                    }}
+      {recent.length === 0 ? (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 40,
+            textAlign: "center",
+            color: "#ccc",
+            fontSize: 14,
+          }}
+        >
+          아직 신청 내역이 없습니다
+        </div>
+      ) : (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #eee",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              fontSize: 13,
+              borderCollapse: "collapse",
+            }}
+          >
+            <thead>
+              <tr style={{ background: "#fafafa" }}>
+                {["작가명", "이메일", "카테고리", "신청일", "상태"].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        fontWeight: 600,
+                        color: "#999",
+                        borderBottom: "1px solid #eee",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((app) => {
+                const st = statusStyle(app.status);
+                return (
+                  <tr
+                    key={app.id}
+                    style={{ borderBottom: "1px solid #f5f5f5" }}
                   >
-                    {portfolioFiles.map((file, index) => (
-                      <div
-                        key={index}
+                    <td
+                      style={{
+                        padding: "12px 16px",
+                        fontWeight: 700,
+                        color: "#000",
+                      }}
+                    >
+                      {app.name}
+                    </td>
+                    <td style={{ padding: "12px 16px", color: "#666" }}>
+                      {app.email}
+                    </td>
+                    <td style={{ padding: "12px 16px", color: "#666" }}>
+                      {app.category || "-"}
+                    </td>
+                    <td style={{ padding: "12px 16px", color: "#999" }}>
+                      {app.created_at
+                        ? new Date(app.created_at).toLocaleDateString("ko-KR")
+                        : "-"}
+                    </td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <span
                         style={{
-                          border: "1px solid #e5e5e5",
-                          borderRadius: 10,
-                          padding: 12,
-                          background: "#fafafa",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: st.color,
+                          background: st.bg,
+                          padding: "3px 10px",
+                          borderRadius: 20,
                         }}
                       >
-                        {isImageFile(file.url, file.type) ? (
-                          <a
-                            href={file.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ textDecoration: "none", color: "inherit" }}
-                          >
-                            <img
-                              src={file.url}
-                              alt={file.name || `portfolio-${index}`}
-                              style={{
-                                width: "100%",
-                                height: 160,
-                                objectFit: "cover",
-                                borderRadius: 8,
-                                marginBottom: 10,
-                                display: "block",
-                              }}
-                            />
-                          </a>
-                        ) : (
-                          <div
-                            style={{
-                              height: 160,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              background: "#eee",
-                              borderRadius: 8,
-                              marginBottom: 10,
-                              fontSize: 14,
-                              color: "#666",
-                              textAlign: "center",
-                              padding: 8,
-                            }}
-                          >
-                            미리보기 없음
-                          </div>
-                        )}
-
-                        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                          <div style={{ fontWeight: "bold", marginBottom: 6 }}>
-                            {file.name || `파일 ${index + 1}`}
-                          </div>
-                          <a
-                            href={file.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: "#0070f3", wordBreak: "break-all" }}
-                          >
-                            파일 열기
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ marginTop: 10 }}>
-                <button
-                  onClick={() => updateStatus(app.id, "approved")}
-                  style={{
-                    marginRight: 10,
-                    background: "green",
-                    color: "white",
-                    padding: "10px 14px",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  승인
-                </button>
-
-                <button
-                  onClick={() => updateStatus(app.id, "rejected")}
-                  style={{
-                    background: "red",
-                    color: "white",
-                    padding: "10px 14px",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  거절
-                </button>
-              </div>
-            </div>
-          );
-        })
+                        {app.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

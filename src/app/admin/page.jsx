@@ -1,127 +1,97 @@
 "use client";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { StatusBadge } from "@/components/ui";
-import { STATUS_MAP, DELIVERY_STATUS_MAP, COURIER_NAME } from "@/lib/constants";
-import { MOCK_APPS, MOCK_SAMPLES, MOCK_MEMBERS } from "@/lib/mock-data";
-import { getPromoStatus, getEventPromoStatus, formatDday, calcPromoDeadline, shouldBlock } from "@/lib/promo";
 
-function useAuth() { const [user, setUser] = useState(null); const [checking, setChecking] = useState(true); const router = useRouter(); useEffect(() => { fetch("/api/auth/me").then((r) => r.json()).then((d) => { if (d.user?.role === "admin") setUser(d.user); else router.replace("/login"); }).catch(() => router.replace("/login")).finally(() => setChecking(false)); }, [router]); const logout = async () => { await fetch("/api/auth/login", { method: "DELETE" }); router.replace("/login"); }; return { user, checking, logout }; }
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-function Lightbox({ src, alt, onClose }) { return (<div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 cursor-pointer" onClick={onClose}><button onClick={onClose} className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/10 border-none cursor-pointer flex items-center justify-center text-white text-xl hover:bg-white/20">&times;</button><img src={src} alt={alt} className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} /></div>); }
-
-function PortfolioViewer({ files }) { const [lb, setLb] = useState(null); if (!files?.length) return <p className="text-[13px] text-gray-300 py-4 text-center">첨부된 포트폴리오가 없습니다.</p>; const isImg = (f) => (f.type?.startsWith("image/") && !f.name?.match(/\.(psd|ai|eps)$/i)) || f.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i); const isPdf = (f) => f.type === "application/pdf" || f.name?.match(/\.pdf$/i); return (<>{lb && <Lightbox src={lb.url} alt={lb.name} onClose={() => setLb(null)} />}<div className="grid grid-cols-3 gap-2.5">{files.map((f, i) => { const ext = f.name?.split(".").pop().toUpperCase() || "FILE"; return (<div key={i} className="relative group">{isImg(f) ? (<div className="aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-[#FFD600]" onClick={() => setLb(f)}><img src={f.url} alt={f.name} className="w-full h-full object-cover" /></div>) : (<a href={f.url} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg border border-gray-100 flex flex-col items-center justify-center gap-1.5 no-underline hover:border-[#FFD600] bg-[#fafafa]"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M16 4H8C6.9 4 6 4.9 6 6V22C6 23.1 6.9 24 8 24H20C21.1 24 22 23.1 22 22V10L16 4Z" stroke={isPdf(f)?"#c62828":"#666"} strokeWidth="1.5" fill={isPdf(f)?"#ffebee":"#f0f0f0"}/><path d="M16 4V10H22" stroke={isPdf(f)?"#c62828":"#666"} strokeWidth="1.5"/></svg><span className="text-[11px] font-bold text-gray-500 uppercase">{ext}</span><span className="text-[9px] text-[#FFD600] font-bold">다운로드</span></a>)}</div>); })}</div></>); }
-
-function VipBadge() { return (<span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#a67c00] bg-[rgba(255,214,0,0.15)] px-1.5 py-0.5 rounded-md"><svg width="10" height="10" viewBox="0 0 12 12" fill="#FFD600"><path d="M6 0L7.5 4.2L12 4.6L8.6 7.5L9.7 12L6 9.8L2.3 12L3.4 7.5L0 4.6L4.5 4.2L6 0Z"/></svg>VIP</span>); }
-function DeliveryBadge({ status }) { const i = DELIVERY_STATUS_MAP[status] || { label: status || "—", color: "#888", bg: "#f0f0f0" }; return <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full" style={{ color: i.color, background: i.bg }}>{i.label}</span>; }
-
-function Sidebar({ current, onNavigate, user, onLogout }) { const items = [{ key: "dashboard", label: "대시보드" }, { key: "applications", label: "크리에이터 신청" }, { key: "samples", label: "샘플 관리" }, { key: "members", label: "회원 관리" }]; return (<aside className="w-[220px] bg-black p-5 flex flex-col gap-1 sticky top-0 h-screen overflow-y-auto flex-shrink-0"><div className="flex items-center gap-2 px-3 mb-5"><div className="w-6 h-6 bg-[#FFD600] rounded flex items-center justify-center"><span className="font-extrabold text-xs text-black">F</span></div><span className="font-bold text-[13px] text-white">ADMIN</span></div>{items.map((it) => (<button key={it.key} onClick={() => onNavigate(it.key)} className={`flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg text-[13px] text-left transition-all border-none cursor-pointer ${current === it.key ? "bg-[rgba(255,214,0,0.15)] text-[#FFD600] font-semibold" : "bg-transparent text-white/45 font-medium"}`}>{it.label}</button>))}<div className="mt-auto pt-4 border-t border-white/10">{user && <div className="px-3 mb-3"><p className="text-[11px] text-white/30">로그인</p><p className="text-[12px] text-white/60 truncate">{user.email}</p></div>}<button onClick={onLogout} className="w-full px-3 py-2 rounded-lg text-[12px] text-red-400/70 bg-transparent border-none cursor-pointer hover:bg-white/5 text-left">로그아웃</button></div></aside>); }
-
-function Dashboard({ onNavigate, onSelectApp, onSelectSample }) {
-  const stats = [{ label: "신규 크리에이터", value: MOCK_APPS.filter((a) => a.status === "pending").length, accent: true }, { label: "제작/배송 진행", value: MOCK_SAMPLES.filter((s) => ["in_production","shipping_ready","shipped","in_transit"].includes(s.status)).length }, { label: "홍보 미완료", value: MOCK_SAMPLES.filter((s) => s.shippedAt && !s.promoSubmitted).length }, { label: "행사 홍보 완료", value: MOCK_SAMPLES.filter((s) => s.eventPromoSubmitted).length }];
-  return (<div><h1 className="text-2xl font-extrabold text-black mb-6">관리자 대시보드</h1>
-    <div className="grid grid-cols-4 gap-3.5 mb-9">{stats.map((s, i) => (<div key={i} className="p-5 rounded-xl bg-white border border-gray-100"><div className="text-[11px] text-gray-400 font-semibold mb-1.5">{s.label}</div><div className={`text-[28px] font-black ${s.accent ? "text-[#FFD600]" : "text-black"}`}>{s.value}</div></div>))}</div>
-    <div className="grid grid-cols-2 gap-5">
-      <div><div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold">최근 크리에이터 신청</h2><button onClick={() => onNavigate("applications")} className="text-[11px] text-gray-400 bg-transparent border-none cursor-pointer hover:text-black">전체 보기 →</button></div>{MOCK_APPS.slice(0, 3).map((a) => (<div key={a.id} onClick={() => { onNavigate("applications"); setTimeout(() => onSelectApp?.(a), 50); }} className="px-4 py-3 rounded-lg border border-gray-100 mb-2 bg-white flex justify-between items-center cursor-pointer hover:border-[#FFD600] hover:shadow-sm transition-all group"><div className="flex items-center gap-2"><span className="text-sm font-bold">{a.artist_name}</span>{a.isVipCreator && <VipBadge />}</div><div className="flex items-center gap-2"><StatusBadge status={a.status} type="app" /><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#ccc" strokeWidth="2" strokeLinecap="round" className="opacity-0 group-hover:opacity-100"><path d="M7 4L13 10L7 16"/></svg></div></div>))}</div>
-      <div><div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold">최근 샘플</h2><button onClick={() => onNavigate("samples")} className="text-[11px] text-gray-400 bg-transparent border-none cursor-pointer hover:text-black">전체 보기 →</button></div>{MOCK_SAMPLES.slice(0, 3).map((s) => { const p = getPromoStatus(s); return (<div key={s.id} onClick={() => { onNavigate("samples"); setTimeout(() => onSelectSample?.(s), 50); }} className="px-4 py-3 rounded-lg border border-gray-100 mb-2 bg-white flex justify-between items-center cursor-pointer hover:border-[#FFD600] hover:shadow-sm transition-all group"><div><span className="text-[13px] font-bold">{s.product_description}</span>{s.shippedAt && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: p.color, background: p.bg }}>홍보: {p.text}</span>}{s.eventPromoSubmitted && <span className="ml-1 text-[10px]">🔴</span>}</div><div className="flex items-center gap-2"><StatusBadge status={s.status} /><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#ccc" strokeWidth="2" strokeLinecap="round" className="opacity-0 group-hover:opacity-100"><path d="M7 4L13 10L7 16"/></svg></div></div>); })}</div>
-    </div></div>);
-}
-
-function ApplicationsManager({ initialDetail }) {
-  const [apps, setApps] = useState(MOCK_APPS); const [filter, setFilter] = useState("all"); const [loading, setLoading] = useState(null); const [modal, setModal] = useState(null); const [adminNote, setAdminNote] = useState(""); const [detail, setDetail] = useState(initialDetail || null);
-  const filtered = filter === "all" ? apps : apps.filter((a) => a.status === filter);
-  const updateApp = (id, u) => { setApps((p) => p.map((a) => (a.id === id ? { ...a, ...u } : a))); if (detail?.id === id) setDetail((d) => ({ ...d, ...u })); };
-  const toggleVip = (id) => { const a = apps.find((x) => x.id === id); if (a) updateApp(id, { isVipCreator: !a.isVipCreator }); };
-  const handleAction = async (app, action) => { if (action === "approved") { if (!confirm("승인하고 메일을 발송하시겠습니까?")) return; await processAction(app, action, ""); } else { setModal({ app, action }); setAdminNote(""); } };
-  const processAction = async (app, action, note) => { const ep = { approved: "approve", rejected: "reject", on_hold: "hold" }[action]; setLoading(app.id); try { const r = await fetch(`/api/admin/applications/${app.id}/${ep}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ artist_name: app.artist_name, email: app.email, admin_note: note }) }); const d = await r.json(); if (d.success) { updateApp(app.id, { status: action }); alert({ approved: "승인 완료", rejected: "거절 완료", on_hold: "보류 완료" }[action]); } else alert("오류: " + (d.error || "")); } catch { alert("네트워크 오류"); } finally { setLoading(null); setModal(null); } };
-  const mc = { rejected: { title: "거절", desc: "거절 메일 발송", ph: "거절 사유", btn: "거절 처리", cls: "text-red-700 bg-red-50 border border-red-200" }, on_hold: { title: "보류", desc: "보류 메일 발송", ph: "보완 요청 내용", btn: "보류 처리", cls: "text-orange-700 bg-orange-50 border border-orange-200" } };
-
-  if (detail) return (<div><button onClick={() => setDetail(null)} className="text-[13px] text-gray-400 mb-6 bg-transparent border-none cursor-pointer flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round"><path d="M14 4L6 10L14 16"/></svg>목록으로</button>
-    <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-      <div className="flex justify-between items-start mb-5"><div><h2 className="text-xl font-extrabold text-black flex items-center gap-2">{detail.artist_name}{detail.isVipCreator && <VipBadge />}</h2><p className="text-sm text-gray-400 mt-1">{detail.email}</p></div><StatusBadge status={detail.status} type="app" /></div>
-      <div className="p-4 rounded-xl bg-[#fafaf6] border border-[rgba(255,214,0,0.15)] mb-5"><div className="text-[11px] text-gray-400 font-semibold mb-3">관리자 전용</div><div className="flex items-center justify-between mb-3"><span className="text-[13px] font-semibold text-gray-700">VIP 작가</span><button onClick={() => toggleVip(detail.id)} className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer border-none ${detail.isVipCreator ? "bg-[#FFD600]" : "bg-gray-200"}`}><div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${detail.isVipCreator ? "left-[22px]" : "left-0.5"}`} /></button></div><label className="block text-[12px] font-semibold text-gray-500 mb-1.5">내부 메모</label><textarea value={detail.adminMemo || ""} onChange={(e) => setDetail((d) => ({ ...d, adminMemo: e.target.value }))} onBlur={(e) => updateApp(detail.id, { adminMemo: e.target.value })} placeholder="예: 우선 대응, 팔로워 많음" rows={2} className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-lg outline-none resize-y bg-white focus:border-[#FFD600]" /></div>
-      <div className="grid grid-cols-2 gap-3 mb-5">{[{ l:"인스타그램", v:detail.instagram||"-" }, { l:"X(트위터)", v:detail.twitter||"-" }, { l:"희망 제품", v:detail.product_category==="acrylic"?"아크릴":"DTF" }, { l:"신청일", v:detail.created_at }].map((i, idx) => (<div key={idx} className="p-3 rounded-lg bg-[#f8f8f8]"><div className="text-[11px] text-gray-400 font-semibold mb-1">{i.l}</div><div className="text-[13px] font-semibold text-gray-700">{i.v}</div></div>))}</div>
-      {detail.product_description && (<div className="p-4 rounded-lg bg-[#f8f8f8] mb-5"><div className="text-[11px] text-gray-400 font-semibold mb-1">제품 설명</div><div className="text-[13px] text-gray-600">{detail.product_description}</div></div>)}
-      <div className="p-4 rounded-lg bg-[#f8f8f8]"><div className="text-[11px] text-gray-400 font-semibold mb-3 flex items-center justify-between"><span>포트폴리오</span>{detail.portfolio_files?.length > 0 && <span className="text-[#FFD600]">{detail.portfolio_files.length}개</span>}</div><PortfolioViewer files={detail.portfolio_files} /></div>
-    </div>
-    {(detail.status === "pending" || detail.status === "on_hold") && (<div className="flex gap-2"><button onClick={() => handleAction(detail, "approved")} disabled={loading === detail.id} className={`px-5 py-2.5 text-sm font-bold text-black bg-[#FFD600] rounded-lg border-none cursor-pointer ${loading === detail.id ? "opacity-60" : ""}`}>{loading === detail.id ? "..." : "승인"}</button><button onClick={() => handleAction(detail, "on_hold")} className="px-5 py-2.5 text-sm font-semibold text-gray-500 bg-gray-100 rounded-lg border-none cursor-pointer">보류</button><button onClick={() => handleAction(detail, "rejected")} className="px-5 py-2.5 text-sm font-semibold text-red-700 bg-red-50 rounded-lg border-none cursor-pointer">거절</button></div>)}</div>);
-
-  return (<div>{modal && (<div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"><div className="bg-white rounded-2xl w-full max-w-[440px] shadow-2xl overflow-hidden"><div className="px-6 py-5 border-b border-gray-100"><h3 className="text-[17px] font-extrabold">{mc[modal.action].title}</h3><p className="text-xs text-gray-400 mt-1">{modal.app.artist_name}</p></div><div className="px-6 py-5"><p className="text-[13px] text-gray-500 mb-3">{mc[modal.action].desc}</p><textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} placeholder={mc[modal.action].ph} rows={4} className="w-full px-3.5 py-3 text-sm border border-gray-200 rounded-lg outline-none resize-y focus:border-[#FFD600]" /></div><div className="px-6 pb-5 flex gap-2.5"><button onClick={() => setModal(null)} className="flex-1 py-3 text-sm font-semibold text-gray-500 bg-gray-100 rounded-xl border-none cursor-pointer">취소</button><button onClick={() => processAction(modal.app, modal.action, adminNote)} disabled={loading === modal.app.id} className={`flex-1 py-3 text-sm font-bold rounded-xl border-none cursor-pointer ${mc[modal.action].cls} ${loading === modal.app.id ? "opacity-60" : ""}`}>{loading === modal.app.id ? "..." : mc[modal.action].btn}</button></div></div></div>)}
-    <h1 className="text-2xl font-extrabold text-black mb-1">크리에이터 신청 관리</h1><p className="text-[13px] text-gray-400 mb-6">행 클릭 → 상세 보기</p>
-    <div className="flex gap-2 mb-5">{["all","pending","on_hold","approved","rejected"].map((v) => (<button key={v} onClick={() => setFilter(v)} className={`px-3.5 py-1.5 text-xs font-semibold rounded-full border-none cursor-pointer ${filter === v ? "bg-black text-white" : "bg-gray-100 text-gray-500"}`}>{{all:"전체",pending:"검토 대기",on_hold:"보류",approved:"승인",rejected:"거절"}[v]}</button>))}</div>
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden"><table className="w-full text-[13px] border-collapse"><thead><tr className="bg-[#fafafa]">{["작가명","이메일","포트폴리오","신청일","상태","액션"].map((h) => (<th key={h} className="px-3.5 py-3 text-left font-semibold text-gray-400 border-b border-gray-100">{h}</th>))}</tr></thead><tbody>{filtered.map((a) => (<tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer" onClick={() => setDetail(a)}><td className="px-3.5 py-3"><span className="font-bold text-black flex items-center gap-1.5">{a.artist_name}{a.isVipCreator && <VipBadge />}</span>{a.adminMemo && <span className="block text-[10px] text-gray-400 mt-0.5 truncate max-w-[180px]">{a.adminMemo}</span>}</td><td className="px-3.5 py-3 text-gray-500">{a.email}</td><td className="px-3.5 py-3"><span className="text-[11px] font-semibold text-[#a67c00] bg-[rgba(255,214,0,0.12)] px-2 py-0.5 rounded-full">{a.portfolio_files?.length || 0}개</span></td><td className="px-3.5 py-3 text-gray-400">{a.created_at}</td><td className="px-3.5 py-3"><StatusBadge status={a.status} type="app" /></td><td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>{(a.status === "pending" || a.status === "on_hold") ? (<div className="flex gap-1.5"><button onClick={() => handleAction(a, "approved")} disabled={loading === a.id} className={`px-3 py-1 text-[11px] font-bold text-black bg-[#FFD600] rounded-md border-none cursor-pointer ${loading === a.id ? "opacity-60" : ""}`}>{loading === a.id ? "..." : "승인"}</button><button onClick={() => handleAction(a, "on_hold")} className="px-3 py-1 text-[11px] font-semibold text-gray-500 bg-gray-100 rounded-md border-none cursor-pointer">보류</button><button onClick={() => handleAction(a, "rejected")} className="px-3 py-1 text-[11px] font-semibold text-red-700 bg-red-50 rounded-md border-none cursor-pointer">거절</button></div>) : a.status === "approved" ? <span className="text-[11px] text-green-700">✓</span> : a.status === "rejected" ? <span className="text-[11px] text-red-400">거절</span> : null}</td></tr>))}</tbody></table></div></div>);
-}
-
-function SamplesManager({ initialDetail }) {
-  const [filter, setFilter] = useState("all"); const [samples, setSamples] = useState(MOCK_SAMPLES); const [detail, setDetail] = useState(initialDetail || null);
-  const [tracking, setTracking] = useState("");
-  const [trackLoading, setTrackLoading] = useState(false); const [trackResult, setTrackResult] = useState(null); const [trackError, setTrackError] = useState("");
-  const filtered = filter === "all" ? samples : samples.filter((s) => s.status === filter);
-  const ns = { submitted:["reviewing","cancelled"], reviewing:["in_production","cancelled"], in_production:["shipping_needed","revision_requested","cancelled"], revision_requested:["in_production"], shipping_needed:[], shipping_ready:["shipped"], shipped:["in_transit"], in_transit:["delivered"], delivered:["promo_pending"], promo_pending:["completed"], completed:[], cancelled:[] };
-  const updateSample = (id, u) => { setSamples((p) => p.map((x) => (x.id === id ? { ...x, ...u } : x))); if (detail?.id === id) setDetail((d) => ({ ...d, ...u })); };
-
-  const handleShip = () => { if (!tracking) { alert("운송장 번호를 입력하세요."); return; } const deadline = calcPromoDeadline(new Date().toISOString()); updateSample(detail.id, { courierName: COURIER_NAME, trackingNumber: tracking, shippedAt: new Date().toISOString(), status: "shipped", deliveryStatus: "shipped", promoDeadline: deadline }); alert("출고 완료!"); };
-  const handleTrack = async (s) => { const t = s || detail; if (!t?.trackingNumber) return; if (t.deliveryConfirmedByAdmin) { setTrackError(""); return; } setTrackLoading(true); setTrackError(""); setTrackResult(null); try { const r = await fetch(`/api/delivery?tracking=${encodeURIComponent(t.trackingNumber)}`); const d = await r.json(); if (!r.ok) { setTrackError(d.error || "조회 실패"); return; } setTrackResult(d); if (!t.deliveryConfirmedByAdmin) { updateSample(t.id, { deliveryStatus: d.status, status: d.status === "delivered" ? "delivered" : t.status, lastCheckedAt: new Date().toISOString() }); } } catch { setTrackError("네트워크 오류"); } finally { setTrackLoading(false); } };
-  const handleDeliveryConfirm = () => { if (!confirm("배송완료로 수동 처리하시겠습니까?\n이후 자동 조회 결과보다 우선 적용됩니다.")) return; updateSample(detail.id, { deliveryStatus: "delivered", status: "delivered", deliveredAt: new Date().toISOString(), deliveryConfirmedByAdmin: true, lastCheckedAt: new Date().toISOString() }); alert("배송완료 처리되었습니다."); };
-  const handleUnblock = (id) => { updateSample(id, { adminUnlocked: true, isBlocked: false }); alert("차단이 해제되었습니다."); };
-
-  useEffect(() => { if (detail?.trackingNumber && detail?.deliveryStatus !== "delivered" && !detail?.deliveryConfirmedByAdmin) handleTrack(detail); }, [detail?.id]);
-
-  if (detail) { const promo = getPromoStatus(detail); const evPromo = getEventPromoStatus(detail); const blocked = shouldBlock(detail); return (<div>
-    <button onClick={() => { setDetail(null); setTrackResult(null); setTrackError(""); }} className="text-[13px] text-gray-400 mb-6 bg-transparent border-none cursor-pointer flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round"><path d="M14 4L6 10L14 16"/></svg>목록으로</button>
-    <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
-      <div className="flex justify-between items-start mb-5"><div><h2 className="text-xl font-extrabold text-black">{detail.product_description}</h2><p className="text-sm text-gray-400 mt-1">{detail.sample_number}</p></div><StatusBadge status={detail.status} /></div>
-      <div className="grid grid-cols-3 gap-3 mb-5">{[{ l:"제품", v:detail.product_category==="acrylic"?"아크릴":"DTF" }, { l:"데이터", v:detail.data_type==="artwork_only"?"그림만":"완성 데이터" }, { l:"신청일", v:detail.created_at }].map((i, idx) => (<div key={idx} className="p-3 rounded-lg bg-[#f8f8f8]"><div className="text-[11px] text-gray-400 font-semibold mb-1">{i.l}</div><div className="text-[13px] font-semibold text-gray-700">{i.v}</div></div>))}</div>
-
-      {/* 홍보 상태 (관리자용) */}
-      <div className="p-4 rounded-lg bg-[#fafaf6] border border-[rgba(255,214,0,0.15)] mb-4">
-        <div className="text-[11px] text-gray-400 font-semibold mb-2">홍보 관리</div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2 rounded bg-white"><div className="text-[10px] text-gray-400 font-semibold">온라인 홍보</div><div className="text-[12px] font-bold mt-0.5" style={{ color: promo.color }}>{promo.text}</div>{detail.promoUrl && <a href={detail.promoUrl} target="_blank" rel="noopener" className="text-[10px] text-blue-600 block mt-0.5 truncate">{detail.promoUrl}</a>}</div>
-          <div className="p-2 rounded bg-white"><div className="text-[10px] text-gray-400 font-semibold">행사장 홍보</div><div className="flex items-center gap-1 mt-0.5"><span className="text-[12px] font-bold" style={{ color: evPromo.color }}>{evPromo.text}</span>{detail.eventPromoSubmitted && <span className="text-[10px]">🔴</span>}</div></div>
-        </div>
-        {blocked && (<div className="mt-3 flex items-center justify-between p-2.5 rounded-lg bg-red-50 border border-red-100">
-          <span className="text-[12px] font-bold text-[#c62828]">⚠ 자동 차단됨 (홍보 기한 초과)</span>
-          <button onClick={() => handleUnblock(detail.id)} className="text-[11px] font-bold text-white bg-[#c62828] px-3 py-1 rounded-md border-none cursor-pointer hover:bg-[#b71c1c]">차단 해제</button>
-        </div>)}
-      </div>
-
-      {/* 배송 정보 */}
-      <div className="p-4 rounded-lg bg-[#f8f8f8] mb-4"><div className="text-[11px] text-gray-400 font-semibold mb-2 flex items-center justify-between"><span>📦 배송 정보</span>{detail.shipping ? <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">입력 완료</span> : <span className="text-[10px] font-bold text-[#0277bd] bg-[#e1f5fe] px-2 py-0.5 rounded-full">미입력</span>}</div>
-        {detail.shipping ? (<div className="grid grid-cols-2 gap-2">{[{ l:"수령인", v:detail.shipping.recipient }, { l:"연락처", v:detail.shipping.phone }, { l:"우편번호", v:detail.shipping.zipcode }, { l:"주소", v:`${detail.shipping.address} ${detail.shipping.address_detail||""}`.trim() }].map((i, idx) => (<div key={idx} className="p-2 rounded bg-white"><div className="text-[10px] text-gray-400 font-semibold">{i.l}</div><div className="text-[12px] font-semibold text-gray-700 mt-0.5">{i.v}</div></div>))}</div>) : <p className="text-[12px] text-gray-400">미입력</p>}
-      </div>
-
-      {detail.status === "shipping_ready" && (<div className="p-4 rounded-xl border-2 border-[#FFD600] bg-[rgba(255,214,0,0.03)] mb-4"><h3 className="text-[13px] font-bold text-black mb-3">출고 처리</h3><div className="mb-3"><div className="flex items-center gap-2 mb-2"><span className="text-[11px] font-semibold text-gray-500">택배사</span><span className="text-[13px] font-bold text-black">{COURIER_NAME}</span></div><label className="block text-[11px] font-semibold text-gray-500 mb-1">운송장 번호</label><input value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="우체국 운송장 번호 입력" className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-lg outline-none bg-white focus:border-[#FFD600]" /></div><button onClick={handleShip} disabled={!tracking} className={`w-full py-2.5 text-[13px] font-bold rounded-lg border-none ${tracking ? "text-black bg-[#FFD600] cursor-pointer" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}>출고 처리</button></div>)}
-
-      {detail.trackingNumber && (<div className="p-4 rounded-lg bg-[#f8f8f8] mb-4"><div className="flex items-center justify-between mb-3"><div className="text-[11px] text-gray-400 font-semibold">🚚 배송 추적 (우체국){detail.deliveryConfirmedByAdmin && <span className="ml-1.5 text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">관리자 확정</span>}</div><div className="flex items-center gap-2"><DeliveryBadge status={detail.deliveryStatus} />{detail.deliveryStatus !== "delivered" && <button onClick={() => handleTrack(detail)} disabled={trackLoading} className={`text-[11px] font-bold px-3 py-1 rounded-md border-none cursor-pointer ${trackLoading ? "text-gray-400 bg-gray-100" : "text-[#1565c0] bg-[#e3f2fd]"}`}>{trackLoading ? "조회 중..." : "배송 조회"}</button>}{detail.deliveryStatus !== "delivered" && <button onClick={handleDeliveryConfirm} className="text-[11px] font-bold px-3 py-1 rounded-md border-none cursor-pointer text-white bg-[#2e7d32] hover:bg-[#1b5e20]">배송완료 처리</button>}</div></div>
-        <div className="grid grid-cols-2 gap-2 mb-3"><div className="p-2 rounded bg-white"><div className="text-[10px] text-gray-400 font-semibold">택배사</div><div className="text-[12px] font-semibold text-gray-700 mt-0.5">{COURIER_NAME}</div></div><div className="p-2 rounded bg-white"><div className="text-[10px] text-gray-400 font-semibold">운송장</div><div className="text-[12px] font-semibold text-gray-700 mt-0.5">{detail.trackingNumber}</div></div></div>
-        {trackError && <div className="p-2.5 rounded-lg bg-red-50 text-[12px] text-red-700 mb-2">{trackError}</div>}
-        {trackResult?.details && (<div className="border border-gray-100 rounded-lg overflow-hidden">{trackResult.details.slice().reverse().map((d, i) => (<div key={i} className={`px-3 py-2 text-[11px] flex gap-3 ${i > 0 ? "border-t border-gray-50" : ""}`}><span className="text-gray-400 flex-shrink-0 w-[110px]">{d.time}</span><span className="text-gray-700 font-medium">{d.location}</span><span className="text-gray-500">{d.detail}</span></div>))}</div>)}
-      </div>)}
-
-      {ns[detail.status]?.length > 0 && detail.status !== "shipping_ready" && (<div className="flex gap-2">{ns[detail.status].map((next) => (<button key={next} onClick={() => { updateSample(detail.id, { status: next }); if (next === "cancelled") alert("취소 — 차감 복원"); }} className={`px-4 py-2 text-[12px] font-bold rounded-lg border-none cursor-pointer ${next === "cancelled" ? "text-red-700 bg-red-50" : "text-black bg-[#FFD600]"}`}>{STATUS_MAP[next]?.label || next}</button>))}</div>)}
-    </div></div>); }
-
-  return (<div><h1 className="text-2xl font-extrabold text-black mb-6">샘플 관리</h1>
-    <div className="flex gap-1.5 mb-5 flex-wrap">{[{ value:"all", label:"전체" }, ...Object.entries(STATUS_MAP).map(([k, v]) => ({ value:k, label:v.label }))].map((f) => (<button key={f.value} onClick={() => setFilter(f.value)} className={`px-3 py-1 text-[11px] font-semibold rounded-full border-none cursor-pointer ${filter === f.value ? "bg-black text-white" : "bg-gray-100 text-gray-500"}`}>{f.label}</button>))}</div>
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden"><table className="w-full text-[13px] border-collapse"><thead><tr className="bg-[#fafafa]">{["샘플번호","설명","홍보","행사","배송","상태"].map((h) => <th key={h} className="px-3.5 py-3 text-left font-semibold text-gray-400 border-b border-gray-100">{h}</th>)}</tr></thead>
-    <tbody>{filtered.map((s) => { const p = getPromoStatus(s); const blocked = shouldBlock(s); return (<tr key={s.id} className={`border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer ${blocked ? "bg-red-50/30" : ""}`} onClick={() => { setDetail(s); setTracking(s.trackingNumber || ""); setTrackResult(null); setTrackError(""); }}>
-      <td className="px-3.5 py-3 font-semibold text-gray-700 text-xs">{s.sample_number}{blocked && <span className="ml-1 text-[9px] text-red-500 font-bold">차단</span>}</td>
-      <td className="px-3.5 py-3 text-gray-500 max-w-[160px] truncate">{s.product_description}</td>
-      <td className="px-3.5 py-3"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: p.color, background: p.bg }}>{p.text}</span></td>
-      <td className="px-3.5 py-3">{s.eventPromoSubmitted ? <span className="text-[10px]">🔴 완료</span> : <span className="text-[10px] text-gray-300">—</span>}</td>
-      <td className="px-3.5 py-3">{s.deliveryStatus ? <DeliveryBadge status={s.deliveryStatus} /> : <span className="text-[10px] text-gray-300">—</span>}</td>
-      <td className="px-3.5 py-3"><StatusBadge status={s.status} /></td>
-    </tr>); })}</tbody></table></div></div>);
-}
-
-function MembersManager() { return (<div><h1 className="text-2xl font-extrabold text-black mb-6">회원 관리</h1><div className="bg-white rounded-xl border border-gray-100 overflow-hidden"><table className="w-full text-[13px] border-collapse"><thead><tr className="bg-[#fafafa]">{["작가명","이메일","상태","사용","총 샘플","가입일","관리"].map((h) => <th key={h} className="px-3.5 py-3 text-left font-semibold text-gray-400 border-b border-gray-100">{h}</th>)}</tr></thead><tbody>{MOCK_MEMBERS.map((m) => (<tr key={m.id} className="border-b border-gray-50"><td className="px-3.5 py-3 font-bold text-black">{m.artist_name}</td><td className="px-3.5 py-3 text-gray-500">{m.email}</td><td className="px-3.5 py-3"><span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${m.status==="active"?"text-green-700 bg-green-50":"text-red-700 bg-red-50"}`}>{m.status==="active"?"활성":"정지"}</span></td><td className="px-3.5 py-3"><span className="font-bold">{m.used_quota}</span><span className="text-gray-300"> / {m.monthly_quota}</span></td><td className="px-3.5 py-3 text-gray-500">{m.total_samples}건</td><td className="px-3.5 py-3 text-gray-400">{m.created_at}</td><td className="px-3.5 py-3"><button className="px-2.5 py-1 text-[11px] font-semibold text-orange-600 bg-orange-50 rounded-md border-none cursor-pointer">횟수 복원</button></td></tr>))}</tbody></table></div></div>); }
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function AdminPage() {
-  const { user, checking, logout } = useAuth(); const [view, setView] = useState("dashboard"); const [pa, setPa] = useState(null); const [ps, setPs] = useState(null);
-  if (checking) return (<div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center"><div className="text-center"><div className="w-10 h-10 bg-[#FFD600] rounded-lg flex items-center justify-center mx-auto mb-4 animate-pulse"><span className="font-extrabold text-base text-black">F</span></div><p className="text-sm text-gray-400">인증 확인 중...</p></div></div>);
-  if (!user) return null;
-  const nav = (v) => { setView(v); setPa(null); setPs(null); };
-  const r = () => { switch (view) { case "applications": return <ApplicationsManager initialDetail={pa} />; case "samples": return <SamplesManager initialDetail={ps} />; case "members": return <MembersManager />; default: return <Dashboard onNavigate={nav} onSelectApp={setPa} onSelectSample={setPs} />; } };
-  return (<div className="min-h-screen bg-[#f8f8f6] flex"><Sidebar current={view} onNavigate={nav} user={user} onLogout={logout} /><main className="flex-1 p-8 overflow-y-auto">{r()}</main></div>);
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    const { data, error } = await supabase
+      .from("applications")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error) {
+      setApplications(data);
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const updateStatus = async (id, status) => {
+    await supabase
+      .from("applications")
+      .update({ status })
+      .eq("id", id);
+
+    fetchData();
+  };
+
+  if (loading) return <div style={{ padding: 40 }}>로딩중...</div>;
+
+  return (
+    <div style={{ padding: 40 }}>
+      <h1 style={{ fontSize: 28, fontWeight: "bold", marginBottom: 20 }}>
+        관리자 페이지
+      </h1>
+
+      {applications.map((app) => (
+        <div
+          key={app.id}
+          style={{
+            border: "1px solid #ddd",
+            padding: 20,
+            marginBottom: 20,
+            borderRadius: 10,
+          }}
+        >
+          <p><b>이름:</b> {app.name}</p>
+          <p><b>이메일:</b> {app.email}</p>
+          <p><b>인스타:</b> {app.instagram}</p>
+          <p><b>트위터:</b> {app.twitter}</p>
+          <p><b>상태:</b> {app.status}</p>
+
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={() => updateStatus(app.id, "approved")}
+              style={{
+                marginRight: 10,
+                background: "green",
+                color: "white",
+                padding: "8px 12px",
+                border: "none",
+                borderRadius: 6,
+              }}
+            >
+              승인
+            </button>
+
+            <button
+              onClick={() => updateStatus(app.id, "rejected")}
+              style={{
+                background: "red",
+                color: "white",
+                padding: "8px 12px",
+                border: "none",
+                borderRadius: 6,
+              }}
+            >
+              거절
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }

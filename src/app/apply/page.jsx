@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Logo } from "@/components/ui";
 import { PRODUCT_OPTIONS, AGREEMENTS } from "@/lib/constants";
 import FileUploader from "@/components/FileUploader";
-import { getBrowserSupabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export default function ApplyPage() {
   const [form, setForm] = useState({
@@ -41,9 +41,6 @@ export default function ApplyPage() {
     filesReady;
   const canSubmit = allFilled && allAgreed && !submitting && !isUploading;
 
-  // ─────────────────────────────────────────────
-  // submit 함수 — Supabase SDK 직접 insert
-  // ─────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!canSubmit) return;
@@ -51,16 +48,12 @@ export default function ApplyPage() {
     setSubmitError("");
 
     try {
-      // 1. Supabase 클라이언트 가져오기
-      const supabase = getBrowserSupabase();
+      const supabase = getSupabase();
 
-      if (!supabase) {
-        throw new Error(
-          "Supabase 연결 실패: .env.local에 NEXT_PUBLIC_SUPABASE_URL과 NEXT_PUBLIC_SUPABASE_ANON_KEY를 확인하세요."
-        );
+      if (!supabase || typeof supabase.from !== "function") {
+        throw new Error("Supabase 연결 실패: 설정을 확인해 주세요.");
       }
 
-      // 2. 포트폴리오 URL 정리
       const portfolioUrls = uploadedFiles.map((f) => ({
         name: f.name,
         url: f.publicUrl,
@@ -68,7 +61,6 @@ export default function ApplyPage() {
         size: f.size,
       }));
 
-      // 3. insert할 데이터 준비 (DB 컬럼명에 정확히 매핑)
       const formData = {
         name: form.artist_name,
         email: form.email,
@@ -80,10 +72,8 @@ export default function ApplyPage() {
         status: "pending",
       };
 
-      // 4. insert 직전 로그
       console.log("insert 실행 직전", formData);
 
-      // 5. Supabase insert 실행
       const { data, error } = await supabase
         .from("applications")
         .insert([
@@ -100,7 +90,6 @@ export default function ApplyPage() {
         ])
         .select();
 
-      // 6. 결과 로그
       if (error) {
         console.error("insert 실패", error);
         throw new Error(
@@ -110,7 +99,6 @@ export default function ApplyPage() {
         console.log("insert 성공", data);
       }
 
-      // 7. 성공 → 완료 화면
       setSubmitted(true);
     } catch (err) {
       console.error("신청 처리 에러:", err);
@@ -122,7 +110,6 @@ export default function ApplyPage() {
     }
   };
 
-  // ─── 완료 화면 ───
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
@@ -160,7 +147,6 @@ export default function ApplyPage() {
     );
   }
 
-  // ─── 폼 UI ───
   const inputStyle =
     "w-full px-3.5 py-3 text-sm border border-gray-200 rounded-lg outline-none bg-[#fafafa] focus:border-[#FFD600] transition-colors";
 
@@ -197,7 +183,6 @@ export default function ApplyPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* 기본 정보 */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
             <h2 className="text-base font-bold text-black mb-5 flex items-center gap-2">
               <div className="w-1 h-4 bg-[#FFD600] rounded" />
@@ -229,17 +214,27 @@ export default function ApplyPage() {
                 SNS 계정 <span className="text-[#FFD600]">*</span>
               </label>
               <span
-                className={`text-[11px] font-medium ${hasSns ? "text-green-700" : "text-gray-400"}`}
+                className={`text-[11px] font-medium ${
+                  hasSns ? "text-green-700" : "text-gray-400"
+                }`}
               >
                 {hasSns ? "✓ 입력 완료" : "1개 이상 입력"}
               </span>
             </div>
             <div
-              className={`p-4 rounded-xl border ${hasSns ? "border-[rgba(255,214,0,0.3)]" : "border-gray-100"} bg-[#fafafa]`}
+              className={`p-4 rounded-xl border ${
+                hasSns
+                  ? "border-[rgba(255,214,0,0.3)]"
+                  : "border-gray-100"
+              } bg-[#fafafa]`}
             >
               <div className="flex items-center gap-2.5 mb-3">
                 <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${form.instagram.trim() ? "bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400" : "bg-gray-200"}`}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    form.instagram.trim()
+                      ? "bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400"
+                      : "bg-gray-200"
+                  }`}
                 >
                   <svg
                     width="16"
@@ -260,7 +255,9 @@ export default function ApplyPage() {
               </div>
               <div className="flex items-center gap-2.5">
                 <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${form.twitter.trim() ? "bg-black" : "bg-gray-200"}`}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    form.twitter.trim() ? "bg-black" : "bg-gray-200"
+                  }`}
                 >
                   <svg
                     width="14"
@@ -282,7 +279,6 @@ export default function ApplyPage() {
             </div>
           </div>
 
-          {/* 희망 제품 */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
             <h2 className="text-base font-bold text-black mb-5 flex items-center gap-2">
               <div className="w-1 h-4 bg-[#FFD600] rounded" />
@@ -296,7 +292,11 @@ export default function ApplyPage() {
                   onClick={() =>
                     setForm((p) => ({ ...p, product_category: opt.value }))
                   }
-                  className={`p-4 rounded-xl text-left transition-all ${form.product_category === opt.value ? "border-2 border-[#FFD600] bg-[rgba(255,214,0,0.04)]" : "border border-gray-200 bg-[#fafafa]"}`}
+                  className={`p-4 rounded-xl text-left transition-all ${
+                    form.product_category === opt.value
+                      ? "border-2 border-[#FFD600] bg-[rgba(255,214,0,0.04)]"
+                      : "border border-gray-200 bg-[#fafafa]"
+                  }`}
                 >
                   <div className="text-sm font-bold text-black">
                     {opt.label}
@@ -318,23 +318,17 @@ export default function ApplyPage() {
             />
           </div>
 
-          {/* 포트폴리오 */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
             <h2 className="text-base font-bold text-black mb-1.5 flex items-center gap-2">
               <div className="w-1 h-4 bg-[#FFD600] rounded" />
-              포트폴리오{" "}
-              <span className="text-[#FFD600] text-[13px]">*</span>
+              포트폴리오 <span className="text-[#FFD600] text-[13px]">*</span>
             </h2>
             <p className="text-xs text-gray-400 mb-4 pl-3">
               승인 검토를 위해 작가님의 작업물을 몇 가지 업로드해 주세요
             </p>
-            <FileUploader
-              value={uploadedFiles}
-              onChange={setUploadedFiles}
-            />
+            <FileUploader value={uploadedFiles} onChange={setUploadedFiles} />
           </div>
 
-          {/* 약관 */}
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-7">
             <h2 className="text-base font-bold text-black mb-5 flex items-center gap-2">
               <div className="w-1 h-4 bg-[#FFD600] rounded" />
@@ -349,10 +343,18 @@ export default function ApplyPage() {
                 });
                 setAgreements(n);
               }}
-              className={`flex items-center gap-2.5 cursor-pointer p-3 rounded-lg mb-3 ${allAgreed ? "bg-[rgba(255,214,0,0.08)] border border-[rgba(255,214,0,0.3)]" : "bg-[#f8f8f8] border border-gray-100"}`}
+              className={`flex items-center gap-2.5 cursor-pointer p-3 rounded-lg mb-3 ${
+                allAgreed
+                  ? "bg-[rgba(255,214,0,0.08)] border border-[rgba(255,214,0,0.3)]"
+                  : "bg-[#f8f8f8] border border-gray-100"
+              }`}
             >
               <div
-                className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${allAgreed ? "border-[#FFD600] bg-[#FFD600]" : "border-gray-300"}`}
+                className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                  allAgreed
+                    ? "border-[#FFD600] bg-[#FFD600]"
+                    : "border-gray-300"
+                }`}
               >
                 {allAgreed && (
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -379,7 +381,11 @@ export default function ApplyPage() {
                 className="flex items-center gap-2.5 cursor-pointer px-3 py-2.5"
               >
                 <div
-                  className={`w-[18px] h-[18px] rounded flex-shrink-0 border-2 flex items-center justify-center ${agreements[a.key] ? "border-[#FFD600] bg-[#FFD600]" : "border-gray-300"}`}
+                  className={`w-[18px] h-[18px] rounded flex-shrink-0 border-2 flex items-center justify-center ${
+                    agreements[a.key]
+                      ? "border-[#FFD600] bg-[#FFD600]"
+                      : "border-gray-300"
+                  }`}
                 >
                   {agreements[a.key] && (
                     <svg
@@ -406,13 +412,17 @@ export default function ApplyPage() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className={`w-full py-4 text-base font-bold rounded-xl transition-all ${canSubmit ? "text-black bg-[#FFD600] cursor-pointer hover:shadow-lg" : "text-gray-400 bg-gray-100 cursor-not-allowed"}`}
+            className={`w-full py-4 text-base font-bold rounded-xl transition-all ${
+              canSubmit
+                ? "text-black bg-[#FFD600] cursor-pointer hover:shadow-lg"
+                : "text-gray-400 bg-gray-100 cursor-not-allowed"
+            }`}
           >
             {submitting
               ? "신청 중..."
               : isUploading
-                ? "파일 업로드 중..."
-                : "신청하기"}
+              ? "파일 업로드 중..."
+              : "신청하기"}
           </button>
           {isUploading && (
             <p className="text-[11px] text-[#a67c00] text-center mt-2">

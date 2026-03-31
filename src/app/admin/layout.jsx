@@ -1,131 +1,50 @@
 "use client";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useAuth } from "./_hooks/useAuth";
+import { AdminNavProvider, useAdminNav } from "./_hooks/AdminContext";
+import Sidebar from "./_components/Sidebar";
 
-export default function AdminLayout({ children }) {
-  const pathname = usePathname();
-
-  const menuItems = [
-    { href: "/admin", label: "대시보드", icon: "📊" },
-    { href: "/admin/applications", label: "신청 관리", icon: "📋" },
-  ];
+/**
+ * 내부 쉘: AdminNavProvider 안에서 useAdminNav 사용 가능
+ */
+function AdminShell({ user, logout, children }) {
+  const { view, nav } = useAdminNav();
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      {/* 사이드바 */}
-      <aside
-        style={{
-          width: 220,
-          background: "#111",
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-          overflowY: "auto",
-        }}
-      >
-        {/* 로고 */}
-        <div
-          style={{
-            padding: "24px 20px 20px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                background: "#FFD600",
-                borderRadius: 6,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 900,
-                fontSize: 13,
-                color: "#000",
-              }}
-            >
-              F
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>
-              FREEWORKS
-            </span>
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "rgba(255,255,255,0.35)",
-              marginTop: 6,
-            }}
-          >
-            관리자 시스템
-          </div>
-        </div>
-
-        {/* 메뉴 */}
-        <nav style={{ padding: "12px 10px", flex: 1 }}>
-          {menuItems.map((item) => {
-            const isActive =
-              item.href === "/admin"
-                ? pathname === "/admin"
-                : pathname.startsWith(item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? "#FFD600" : "rgba(255,255,255,0.45)",
-                  background: isActive
-                    ? "rgba(255,214,0,0.12)"
-                    : "transparent",
-                  textDecoration: "none",
-                  marginBottom: 2,
-                  transition: "all 0.15s",
-                }}
-              >
-                <span style={{ fontSize: 15 }}>{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* 하단 */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.25)",
-          }}
-        >
-          FREEWORKS ADMIN v1.0
-        </div>
-      </aside>
-
-      {/* 본문 */}
-      <main
-        style={{
-          flex: 1,
-          background: "#f8f8f6",
-          minHeight: "100vh",
-          overflowY: "auto",
-        }}
-      >
-        {children}
-      </main>
+    <div className="min-h-screen bg-[#f8f8f6] flex">
+      <Sidebar current={view} onNavigate={nav} user={user} onLogout={logout} />
+      <main className="flex-1 p-8 overflow-y-auto">{children}</main>
     </div>
+  );
+}
+
+/**
+ * Admin 레이아웃
+ * - 인증 체크 (admin role 필수)
+ * - Sidebar + 콘텐츠 영역 공통 구조
+ * - 네비게이션 컨텍스트 제공
+ */
+export default function AdminLayout({ children }) {
+  const { user, checking, logout } = useAuth();
+
+  // 인증 확인 중 로딩
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-[#f8f8f6] flex items-center justify-center">
+        <div className="w-10 h-10 bg-[#FFD600] rounded-lg flex items-center justify-center mx-auto mb-4 animate-pulse">
+          <span className="font-extrabold text-base text-black">F</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 비인증 → useAuth 내부에서 /login 리다이렉트 처리됨
+  if (!user) return null;
+
+  return (
+    <AdminNavProvider>
+      <AdminShell user={user} logout={logout}>
+        {children}
+      </AdminShell>
+    </AdminNavProvider>
   );
 }
